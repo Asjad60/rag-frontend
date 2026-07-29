@@ -31,7 +31,7 @@ export default function WidgetEmbed() {
         const res = await axios.get(`${API_BASE}/api/bots/${botId}`);
         if (res.data) {
           const fetchedMeta = {
-            businessName: res.data.businessName || res.data.name || 'AI Assistant',
+            businessName: res.data.name || res.data.businessName || 'AI Assistant',
             welcomeMessage: res.data.welcomeMessage || 'Hi! How can I help you today?',
             colorScheme: res.data.colorScheme || '#3B82F6',
           };

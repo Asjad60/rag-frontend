@@ -17,6 +17,8 @@ export default function Onboarding() {
     businessName: '',
     websiteUrl: '',
     welcomeMessage: '',
+    role: 'shopping_assistant',
+    businessSummary: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -45,7 +47,9 @@ export default function Onboarding() {
         welcomeMessage:
           form.welcomeMessage ||
           `Hi! I'm the AI assistant for ${form.businessName || form.botName}. How can I help you today?`,
-        description: `AI assistant for ${form.businessName || form.botName} — trained on ${form.websiteUrl}`,
+        role: form.role || 'shopping_assistant',
+        businessSummary: form.businessSummary || '',
+        description: `AI ${form.role || 'assistant'} for ${form.businessName || form.botName} — trained on ${form.websiteUrl}`,
       });
       const botId = botRes.data._id;
 
@@ -148,6 +152,35 @@ export default function Onboarding() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Assistant Primary Role
+                  </label>
+                  <select
+                    value={form.role}
+                    onChange={(e) => update('role', e.target.value)}
+                    className="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer text-sm"
+                  >
+                    <option value="shopping_assistant">🛍️ Shopping Assistant — Product recommendations, specs, pricing & checkout</option>
+                    <option value="customer_support">🎧 Customer Support — Order tracking, shipping policies, returns & store info</option>
+                    <option value="lead_generation">🎯 Sales & Lead Generation — Product/service inquiries, quote capture & consultations</option>
+                    <option value="technical_support">🛠️ Technical Support — Troubleshooting, installation guides & technical specs</option>
+                    <option value="general_assistant">🤖 General AI Assistant — Universal website info & FAQs</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Business Context / Key Products{' '}
+                    <span className="text-slate-500 font-normal">(optional)</span>
+                  </label>
+                  <textarea
+                    value={form.businessSummary}
+                    onChange={(e) => update('businessSummary', e.target.value)}
+                    rows={2}
+                    className="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                    placeholder="e.g. Sells techwear and UV protection clothing like Sunscreen Jackets & Travel Joggers."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
                     Welcome Message{' '}
                     <span className="text-slate-500 font-normal">(optional)</span>
                   </label>
@@ -232,6 +265,8 @@ export default function Onboarding() {
               <div className="bg-slate-900/60 border border-slate-700 rounded-2xl p-5 space-y-3 mb-6 text-sm">
                 <Row label="Bot Name" value={form.botName} />
                 <Row label="Business" value={form.businessName} />
+                <Row label="Role" value={form.role ? form.role.replace('_', ' ').toUpperCase() : 'SHOPPING ASSISTANT'} />
+                {form.businessSummary && <Row label="Context" value={form.businessSummary} />}
                 <Row label="Website" value={form.websiteUrl} />
                 <Row
                   label="Welcome"
