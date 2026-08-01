@@ -70,11 +70,17 @@ export default function WidgetEmbed() {
 
     const userMessage = input.trim();
     setInput('');
-    setMessages((prev) => [...prev, { sender: 'user', text: userMessage }]);
+
+    // Append user message AND an empty bot placeholder message for real-time streaming
+    setMessages((prev) => [
+      ...prev,
+      { sender: 'user', text: userMessage },
+      { sender: 'bot', text: '', streaming: true },
+    ]);
     setLoading(true);
 
     const chatHistory = messages
-      .filter((m) => m.sender === 'user' || m.sender === 'bot')
+      .filter((m) => m.sender === 'user' || (m.sender === 'bot' && m.text))
       .slice(-10)
       .map((m) => ({
         role: m.sender === 'user' ? 'user' : 'assistant',
@@ -82,20 +88,85 @@ export default function WidgetEmbed() {
       }));
 
     try {
-      const res = await axios.post(`${API_BASE}/api/chat`, {
-        botId,
-        message: userMessage,
-        chatHistory,
+      const response = await fetch(`${API_BASE}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          botId,
+          message: userMessage,
+          chatHistory,
+          stream: true,
+        }),
       });
 
-      const botReply = res.data.reply || 'Sorry, I encountered an issue. Please try again.';
-      setMessages((prev) => [...prev, { sender: 'bot', text: botReply }]);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+          const jsonStr = trimmed.slice(6);
+          if (jsonStr === '[DONE]') break;
+
+          try {
+            const data = JSON.parse(jsonStr);
+            if (data.type === 'token' && data.token) {
+              setMessages((prev) => {
+                const newArr = [...prev];
+                const lastIdx = newArr.length - 1;
+                if (lastIdx >= 0 && newArr[lastIdx].sender === 'bot') {
+                  newArr[lastIdx] = {
+                    ...newArr[lastIdx],
+                    text: newArr[lastIdx].text + data.token,
+                  };
+                }
+                return newArr;
+              });
+            } else if (data.type === 'done') {
+              setMessages((prev) => {
+                const newArr = [...prev];
+                const lastIdx = newArr.length - 1;
+                if (lastIdx >= 0 && newArr[lastIdx].sender === 'bot') {
+                  newArr[lastIdx] = {
+                    ...newArr[lastIdx],
+                    logId: data.logId,
+                    streaming: false,
+                  };
+                }
+                return newArr;
+              });
+            }
+          } catch (_) {}
+        }
+      }
     } catch (err) {
       console.error('Widget send error:', err);
-      setMessages((prev) => [
-        ...prev,
-        { sender: 'bot', text: "I'm having trouble connecting right now. Please try again in a moment." },
-      ]);
+      setMessages((prev) => {
+        const newArr = [...prev];
+        const lastIdx = newArr.length - 1;
+        if (lastIdx >= 0 && newArr[lastIdx].sender === 'bot') {
+          const currentText = newArr[lastIdx].text;
+          newArr[lastIdx] = {
+            sender: 'bot',
+            text: currentText || "I'm having trouble connecting right now. Please try again in a moment.",
+            streaming: false,
+          };
+        }
+        return newArr;
+      });
     } finally {
       setLoading(false);
     }
@@ -292,34 +363,38 @@ export default function WidgetEmbed() {
 
           {/* Chat Messages (Fills remaining height flex-1) */}
           <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50 dark:bg-slate-950/50">
-            {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-200`}
-              >
-                <div
-                  className={`max-w-[85%] p-3.5 rounded-2xl ${
-                    msg.sender === 'user'
-                      ? 'text-white rounded-br-none shadow-md font-medium text-sm'
-                      : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 rounded-bl-none border border-slate-200/80 dark:border-slate-800 shadow-sm'
-                  }`}
-                  style={msg.sender === 'user' ? { backgroundColor: primaryColor } : {}}
-                >
-                  {msg.sender === 'user' ? msg.text : formatMarkdown(msg.text)}
-                </div>
-              </div>
-            ))}
+            {messages.map((msg, index) => {
+              const isBot = msg.sender === 'bot';
+              const isEmptyBotText = isBot && !msg.text;
 
-            {/* Typing Indicator */}
-            {loading && (
-              <div className="flex justify-start animate-in fade-in duration-200">
-                <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl rounded-bl-none border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+              return (
+                <div
+                  key={index}
+                  className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-200`}
+                >
+                  <div
+                    className={`max-w-[85%] p-3.5 rounded-2xl ${
+                      msg.sender === 'user'
+                        ? 'text-white rounded-br-none shadow-md font-medium text-sm'
+                        : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 rounded-bl-none border border-slate-200/80 dark:border-slate-800 shadow-sm'
+                    }`}
+                    style={msg.sender === 'user' ? { backgroundColor: primaryColor } : {}}
+                  >
+                    {msg.sender === 'user' ? (
+                      msg.text
+                    ) : isEmptyBotText ? (
+                      <div className="flex items-center space-x-1.5 py-1 px-1">
+                        <div className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <div className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <div className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    ) : (
+                      formatMarkdown(msg.text)
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })}
 
             <div ref={messagesEndRef} />
           </div>
